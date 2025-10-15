@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 
+# Enable strict error handling
+set -euo pipefail
+
+# Validate required parameters
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <architecture> <target_directory>"
+    exit 1
+fi
+
+if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then
+    echo "Error: Architecture and target directory parameters are required"
+    exit 1
+fi
+
 #Bootstrap the system
-rm -rf $2
-mkdir $2
+if [ -d "$2" ]; then
+    echo "Removing existing directory: $2"
+    rm -rf "$2"
+fi
+mkdir -p "$2"
 if [ "$1" = "i386" ] || [ "$1" = "amd64" ] ; then
   debootstrap --no-check-gpg --arch=$1 --variant=minbase --include=systemd,libsystemd0,libnss-systemd,systemd-sysv,wget,ca-certificates,udisks2,gvfs bionic $1 http://archive.ubuntu.com/ubuntu
 else  
@@ -14,7 +31,8 @@ DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
  LC_ALL=C LANGUAGE=C LANG=C chroot $2 apt-get clean
 
 #Fix permission on dev machine only for easy packing
-chmod 777 -R $2
+# Use more secure permissions instead of 777
+chmod 755 -R "$2"
 
 #This step is only needed for Ubuntu to prevent Group error
 touch $2/root/.hushlogin
@@ -25,7 +43,9 @@ echo "nameserver 8.8.8.8" > $2/etc/resolv.conf
 echo "nameserver 8.8.4.4" >> $2/etc/resolv.conf
 
 #sources.list setup
-rm $2/etc/apt/sources.list
+if [ -f "$2/etc/apt/sources.list" ]; then
+    rm "$2/etc/apt/sources.list"
+fi
 if [ "$1" = "i386" ] || [ "$1" = "amd64" ] ; then
   echo "deb http://archive.ubuntu.com/ubuntu bionic main restricted universe multiverse" >> $2/etc/apt/sources.list
   echo "deb-src http://archive.ubuntu.com/ubuntu bionic main restricted universe multiverse" >> $2/etc/apt/sources.list
@@ -35,7 +55,11 @@ else
 fi
 
 #tar the rootfs
-cd $2
-rm -rf ../ubuntu-rootfs-$1.tar.xz
-rm -rf dev/*
-XZ_OPT=-9 tar -cJvf ../ubuntu-rootfs-$1.tar.xz ./*
+cd "$2"
+if [ -f "../ubuntu-rootfs-$1.tar.xz" ]; then
+    rm -f "../ubuntu-rootfs-$1.tar.xz"
+fi
+if [ -d "dev" ]; then
+    rm -rf dev/*
+fi
+XZ_OPT=-9 tar -cJvf "../ubuntu-rootfs-$1.tar.xz" ./*
